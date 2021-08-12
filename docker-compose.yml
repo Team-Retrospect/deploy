@@ -1,0 +1,63 @@
+version: "3"
+
+networks:
+  default:
+    name: retrospect
+
+services:
+  cassandra:
+    image: cassandra:latest
+    container_name: cassandra
+    restart: always
+    ports: ["9042:9042"]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "cqlsh",
+          "-u cassandra",
+          "-p cassandra",
+          "-e describe keyspaces",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  cassandra-load-keyspace:
+    container_name: cassandra-load-keyspace
+    image: cassandra:latest
+    depends_on:
+      cassandra:
+        condition: service_healthy
+    volumes:
+      - ./data.cql:/data.cql
+    command: /bin/bash -c "echo loading cassandra keyspace && cqlsh cassandra -f /data.cql"
+    restart: on-failure
+
+  cleaner:
+    container_name: retrospect-cleaner
+    image: teamretrospect/cleaner:latest
+    depends_on:
+      cassandra:
+        condition: service_healthy
+    tty: true
+    restart: always
+
+  api:
+    depends_on: ["cassandra"]
+    container_name: retrospect-api
+    image: teamretrospect/api:latest
+    ports: ["80:80"]
+    restart: always
+
+  server:
+    depends_on: ["api"]
+    container_name: retrospect-server
+    image: teamretrospect/server:latest
+    ports: ["5200:5200"]
+
+  client:
+    depends_on: ["server"]
+    container_name: retrospect-client
+    image: teamretrospect/client:latest
+    ports: ["3200:3200"]
